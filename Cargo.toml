@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 eframe = "0.29"
 egui = "0.29"
+bevy = "0.18"
