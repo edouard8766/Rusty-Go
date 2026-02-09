@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::sprite::Anchor;
 use crate::board::{Board, Stone};
 
 // pixels entre chaque intersection
@@ -34,6 +35,13 @@ fn spawn_board_visuals(
     let offset = board_length / 2.0; // center the board
     //faut mettre un material noir pour les lignes
     let black_material = materials.add(ColorMaterial::from(Color::BLACK));
+    let text_color = TextColor::from(Color::BLACK);
+    let text_font = TextFont {
+        font_size: 16.0,
+        ..default()
+    };
+
+    let letters = vec!["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"]; // we skip I because it looks like 1
 
     for i in 0..board.size {
         let pos = i as f32 * CELL_SIZE - offset;
@@ -61,6 +69,44 @@ fn spawn_board_visuals(
             // Z = 0.0 (Same layer as vertical lines)
             Transform::from_xyz(0.0, pos, 0.0),
         ));
+        // grid labels
+        if i < letters.len() {
+            commands.spawn((
+                Text2d::new(letters[i]),
+                text_font.clone(),
+                text_color,
+                Transform::from_xyz(pos, -offset -25.0, 0.0),
+                Anchor::CENTER,
+            ));
+        }
+        let number_label = (i + 1).to_string();
+        commands.spawn((
+            Text2d::new(number_label),
+            text_font.clone(),
+            text_color,
+            Transform::from_xyz(-offset - 25.0, pos, 0.0),
+            Anchor::CENTER,
+        ));
+    }
+        //star points
+    let star_indices = [3, 9, 15];
+    let star_mesh = meshes.add(Circle::new(4.0)); //Small dot
+
+    for &y_idx in &star_indices {
+        for &x_idx in &star_indices {
+            let x_pos = x_idx as f32 * CELL_SIZE - offset;
+            let y_pos = y_idx as f32 * CELL_SIZE - offset;
+
+            commands.spawn((
+                Mesh2d(star_mesh.clone()),
+                MeshMaterial2d(black_material.clone()),
+                // IMPORTANT: Z = 0.1
+                // 0.0 = Lines
+                // 0.1 = Star Points (so they sit over lines)
+                // 1.0 = Stones (so they cover the star points)
+                Transform::from_xyz(x_pos, y_pos, 0.1), 
+            ));
+        }
     }
 }
 fn handle_input(
