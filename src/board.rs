@@ -12,16 +12,20 @@ pub enum Stone {
 #[derive(Resource)] 
 pub struct Board {
     pub size: usize,
-    pub grid: Vec<Vec<Stone>>,
-    pub turn: Stone, 
+    pub grid: Vec<Vec<(Stone, Option<Entity>)>>, //faut entity pour pouvoir delete la pierre quand captured
+    pub turn: Stone,
+    pub black_captures: usize,
+    pub white_captures: usize,
 }
 
 impl Default for Board {
     fn default() -> Self {
         Self {
             size: 19,
-            grid: vec![vec![Stone::Empty; 19]; 19],
+            grid: vec![vec![(Stone::Empty, None); 19]; 19],
             turn: Stone::Black,
+            black_captures: 0,
+            white_captures: 0,
         }
     }
 }

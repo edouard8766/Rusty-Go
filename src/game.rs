@@ -6,23 +6,30 @@ use crate::board::{Board, Stone};
 const CELL_SIZE: f32 = 40.0;
 const LINE_THICKNESS: f32 = 2.0;
 
+#[derive(Component)]//pour le texte
+struct ScoreText;
+
 pub struct GoPlugin;
 
 impl Plugin for GoPlugin {
     fn build(&self, app: &mut App) {
         //runs when we launch
-        app.add_systems(Startup, (setup_camera, spawn_board_visuals))
+        app.add_systems(Startup, (setup_camera, spawn_board_visuals, setup_ui))
         //runs every frame
-           .add_systems(Update, handle_input);
+           .add_systems(Update, (handle_input, update_scoreboard));
     }
 }
 
 fn setup_camera(mut commands: Commands) {
     // Spawn the camera
     // Bevy automatically adds Transform and Projection
-    commands.spawn(Camera2d);
+    commands.spawn((
+        Camera2d,
+        Projection::from(OrthographicProjection {
+            scale: 1.3,
+            ..OrthographicProjection::default_2d()
+        })));
 }
-
 fn spawn_board_visuals(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -130,7 +137,10 @@ fn handle_input(
                 //Snap to nearest intersection
                 let x_index = ((world_pos.x + offset) / CELL_SIZE).round();
                 let y_index = ((world_pos.y + offset) / CELL_SIZE).round();
-
+                
+                if x_index < 0.0 || y_index < 0.0 {
+                    return; //clicked outside top-left of board
+                }
                 //calculate snapped world position
                 let snap_pos = Vec2::new(
                     x_index * CELL_SIZE - offset,
@@ -151,42 +161,166 @@ fn handle_input(
                     let r_x = x as usize;
                     let r_y = y as usize;
 
-                    if board.grid[r_y][r_x] == Stone::Empty {
-                        // Update Data
-                        board.grid[r_y][r_x] = board.turn;
-                        //color depending on turn, black starts
-                        let color = match board.turn {
-                            Stone::Black => Color::BLACK,
-                            Stone::White => Color::WHITE,
-                            _ => Color::NONE,
-                        };
-
-                        //spawn stone visual                    
-                        commands.spawn((
-                            //circle mesh with a radius of 45% of cell size
-                            Mesh2d(meshes.add(Circle::new(CELL_SIZE * 0.45))),
-                            MeshMaterial2d(materials.add(ColorMaterial::from(color))),
-                            //places at snapped position, z=1.0 to be above the grid lines
-                            Transform::from_translation(snap_pos.extend(1.0)), 
-                        ));
-
-                        //White stone outline
-                        if board.turn == Stone::White {
-                            commands.spawn((
-                                Mesh2d(meshes.add(Circle::new(CELL_SIZE * 0.48))),
-                                MeshMaterial2d(materials.add(ColorMaterial::from(Color::BLACK))),
-                                Transform::from_translation(snap_pos.extend(0.5)),
-                            ));
-                        }
-
-                        // Switch Turn
+                    if board.grid[r_y][r_x].0 == Stone::Empty {
+                        let move_valid = attempt_move(
+                            &mut board, &mut commands, &mut meshes, &mut materials, r_x, r_y, snap_pos
+                        );
+                    if move_valid {
                         board.turn = match board.turn {
                             Stone::Black => Stone::White,
                             _ => Stone::Black,
+                        };
                         };
                     }
                 }
             }
         }
     }
+}
+
+fn setup_ui(mut commands: Commands) {
+    //UI node au bottom left
+    commands.spawn((
+        Text::new("Black Captures: 0  White Captures: 0"),
+        TextFont {
+            font_size: 24.0,
+            ..default()
+        },
+        TextColor::from(Color::BLACK),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(20.0),
+            left: Val::Px(20.0),
+                ..default()
+            },
+        ScoreText, //juste un tag
+    ));
+}
+
+fn update_scoreboard(board: Res<Board>, mut query: Query<&mut Text, With<ScoreText>>) {
+    if board.is_changed() {
+        for mut text in &mut query {
+            text.0 = format!("Black Captures: {}  White Captures: {}", board.black_captures, board.white_captures);
+        }
+    }
+}
+
+fn attempt_move(
+    board: &mut Board,
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    x: usize,
+    y: usize,
+    pos: Vec2,
+) -> bool {
+    let color = board.turn;
+    let opponent = match color {
+        Stone::Black => Stone::White,
+        _ => Stone::Black,
+    };
+    let visual_color = if color == Stone::Black { Color::BLACK } else { Color::WHITE };
+    let new_entity = commands.spawn((
+        Mesh2d(meshes.add(Circle::new(CELL_SIZE * 0.45))),
+        MeshMaterial2d(materials.add(ColorMaterial::from(visual_color))),
+        Transform::from_translation(pos.extend(1.0)), 
+    )).id();
+
+    // White outline
+    if color == Stone::White {
+        let outline = commands.spawn((
+            Mesh2d(meshes.add(Circle::new(CELL_SIZE * 0.48))),
+            MeshMaterial2d(materials.add(ColorMaterial::from(Color::BLACK))),
+            Transform::from_translation(pos.extend(0.5)),
+        )).id();
+        commands.entity(new_entity).add_child(outline);
+    }
+    board.grid[y][x] = (color, Some(new_entity));
+
+    //capture logic
+    let mut captured_total = 0;
+    let directions = [(0,1), (1,0), (0,-1), (-1,0)];
+    for (dx, dy) in directions {
+        let ny = (y as i32 + dy) as usize;
+        let nx = (x as i32 + dx) as usize;
+        if ny < board.size && nx < board.size {
+            if board.grid[ny][nx].0 == opponent {
+                if !has_liberties(board, nx, ny) {
+                    captured_total += remove_group(board, commands, nx, ny);
+                }
+            }
+        }
+    }
+    if color == Stone::Black {
+        board.black_captures += captured_total;
+    } else {
+        board.white_captures += captured_total;
+    }
+    //pas de suicide ici
+    if captured_total == 0 && !has_liberties(board, x, y) {
+        commands.entity(new_entity).despawn();
+        board.grid[y][x] = (Stone::Empty, None);
+        return false;
+    }
+
+    true
+}
+
+fn has_liberties(board: &Board, start_x: usize, start_y: usize) -> bool {
+    let color = board.grid[start_y][start_x].0;
+    let mut stack = vec![(start_x, start_y)];
+    let mut visited = std::collections::HashSet::new();//tableau des stones checked
+
+    while let Some((x, y)) = stack.pop() {
+        if !visited.insert((x, y)) { continue; }
+
+        let directions = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+        for (dy, dx) in directions {
+            let ny = (y as i32 + dy) as usize;
+            let nx = (x as i32 + dx) as usize;
+
+            if ny < board.size && nx < board.size {
+                let (stone, _) = board.grid[ny][nx];
+                if stone == Stone::Empty { return true; }//found
+                if stone == color && !visited.contains(&(nx, ny)) {
+                    stack.push((nx, ny)); //found other, now check it
+                }
+            }
+        }
+    }
+    false
+}
+
+fn remove_group(board: &mut Board, commands: &mut Commands, start_x: usize, start_y: usize) -> usize {
+    let color = board.grid[start_y][start_x].0;
+    let mut stack = vec![(start_x, start_y)];
+    let mut visited = std::collections::HashSet::new();
+    let mut to_remove = Vec::new();
+
+    //voir dans visited les voisins
+    while let Some((x, y)) = stack.pop() {
+        if !visited.insert((x, y)) { continue; }
+        to_remove.push((x, y));
+
+        let directions = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+        for (dy, dx) in directions {
+            let ny = (y as i32 + dy) as usize;
+            let nx = (x as i32 + dx) as usize;
+            if ny < board.size && nx < board.size {
+                if board.grid[ny][nx].0 == color && !visited.contains(&(nx, ny)) {
+                    stack.push((nx, ny));
+                }
+            }
+        }
+    }
+
+    //remove
+    let count = to_remove.len();
+    for (rx, ry) in to_remove {
+        if let Some(entity) = board.grid[ry][rx].1 {
+            commands.entity(entity).despawn();
+        }
+        board.grid[ry][rx] = (Stone::Empty, None);
+    }
+    count
 }
