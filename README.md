@@ -7,7 +7,7 @@ Rusty-Go is a desktop implementation of the ancient board game Go. It leverages 
 
 This project was created to explore game development in Rust, transitioning from immediate-mode GUIs (egui) to full game engines (Bevy).
 
-## ✨ Features
+## Features
 *   **Full 19x19 Board:** Includes standard visual guides like Star Points (Hoshi) and Coordinate labels (A-T, 1-19).
 *   **Game Logic:**
     *   Alternating turns (Black goes first).
@@ -23,17 +23,7 @@ This project was created to explore game development in Rust, transitioning from
 You must have **Rust** and **Cargo** installed.
 [Install Rust here](https://www.rust-lang.org/tools/install).
 
-### Installation
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/YourUsername/Rusty-Go.git
-    cd Rusty-Go
-    ```
 
-2.  Run the game:
-    ```bash
-    cargo run --release
-    ```
     *(Note: The first compilation might take a minute as it compiles the Bevy engine dependencies.)*
 
 ## 🎮 Controls
@@ -51,6 +41,3 @@ You must have **Rust** and **Cargo** installed.
 - [ ] Territory scoring algorithm.
 - [ ] Sound effects for stone placement.
 - [ ] Save/Load game state (SGF format).
-
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
