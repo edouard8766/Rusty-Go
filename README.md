@@ -1,6 +1,6 @@
 A fully playable, hardware-accelerated Go game built in Rust using the [Bevy Game Engine](https://bevyengine.org/).
 
-![Rusty-Go Screenshot](./screenshot.png)
+![Rusty-Go Screenshot]
 
 ## About
 Rusty-Go is a desktop implementation of the ancient board game Go. It leverages the Entity Component System (ECS) architecture provided by Bevy (v0.18) to render a crisp, resizeable board with immediate input response.
