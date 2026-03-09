@@ -3,41 +3,45 @@ A fully playable, hardware-accelerated Go game built in Rust using the [Bevy Gam
 ![Rusty-Go Screenshot](./screenshot.png)
 
 ## About
-Rusty-Go is a desktop implementation of the ancient board game Go. It leverages the Entity Component System (ECS) architecture provided by Bevy (v0.18) to render a crisp, resizeable board with immediate input response.
+Rusty-Go is a desktop implementation of the ancient board game Go. It uses Bevy's (v0.18) Entity Component System to render a 19x19 board with real game rules — captures, suicide prevention, Ko, territory scoring, and proper game end detection.
 
-This project was created to explore game development in Rust, transitioning from immediate-mode GUIs (egui) to full game engines (Bevy).
+This project started as an exploration of Rust game development, moving from immediate-mode GUIs (egui) to a proper game engine (Bevy).
 
 ## Features
-*   **Full 19x19 Board:** Includes standard visual guides like Star Points (Hoshi) and Coordinate labels (A-T, 1-19).
-*   **Game Logic:**
-    *   Alternating turns (Black goes first).
-    *   **Capture Mechanics:** Implements Flood Fill algorithms to detect surrounded groups and remove them.
-    *   **Suicide Rule:** Prevents placing a stone that would immediately result in self-capture (unless it captures the opponent).
+*   **Full 19x19 Board** with Star Points (Hoshi) and coordinate labels (A–T, 1–19).
+*   **Game Rules:**
+    *   Alternating turns, Black goes first.
+    *   **Capture mechanics** — flood fill detects surrounded groups and removes them.
+    *   **Suicide rule** — can't place a stone that immediately self-captures (unless it takes opponent stones first).
+    *   **Ko rule** — prevents immediately recapturing a single stone, stopping infinite loops.
+    *   **Pass** — either player can pass their turn. Two consecutive passes end the game.
+*   **Automatic Scoring (Japanese rules):**
+    *   Territory counted by flood-filling empty regions and checking which color surrounds them.
+    *   Captures and komi (6.5 for White) included in the final total.
+    *   Game over screen shows the full breakdown and declares the winner.
 *   **Visuals:**
-    *   Filled stones with Z-indexing (Stones sit on top of grid lines).
-    *   White stone outlines for visibility.
-    *   Visual snapping to intersections.
-*   **UI:** Real-time text display tracking captured stones for both Black and White.
+    *   Stones with proper Z-layering over grid lines.
+    *   White stone outlines for visibility against the board.
+    *   Snap-to-intersection placement.
+*   **UI:** Live capture counts and turn indicator for both players.
 
 ### Prerequisites
-You must have **Rust** and **Cargo** installed.
-[Install Rust here](https://www.rust-lang.org/tools/install).
+You need **Rust** and **Cargo** installed.
+[Install Rust](https://www.rust-lang.org/tools/install)
 
+*(First build takes a while — Bevy has a lot of dependencies.)*
 
-    *(Note: The first compilation might take a minute as it compiles the Bevy engine dependencies.)*
+## Controls
+*   **Left Click** — place a stone on the nearest intersection.
+*   **P** — pass your turn.
+*   **R** — start a new game (available after the game ends).
 
-## 🎮 Controls
-*   **Mouse:** Hover over intersections to aim.
-*   **Left Click:** Place a stone.
-*   **Rules:** Standard Go rules apply. Black moves first. Stones are removed when they have 0 liberties.
+## Built With
+*   [Rust](https://www.rust-lang.org/)
+*   [Bevy 0.18](https://bevyengine.org/)
 
-## 🛠️ Built With
-*   [Rust](https://www.rust-lang.org/) - The programming language.
-*   [Bevy 0.18](https://bevyengine.org/) - The Data-Driven Game Engine.
-
-## 🗺️ Roadmap / Future Features
-- [ ] Ko Rule implementation (prevent infinite loop captures).
-- [ ] Game End detection (Two consecutive passes).
-- [ ] Territory scoring algorithm.
+## Roadmap
 - [ ] Sound effects for stone placement.
 - [ ] Save/Load game state (SGF format).
+- [ ] Show shadow of possible moves
+- [ ] Online multiplayer*.
