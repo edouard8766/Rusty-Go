@@ -10,13 +10,22 @@ const LINE_THICKNESS: f32 = 2.0;
 #[derive(Component)] struct BlackTurnText;
 #[derive(Component)] struct WhiteTurnText;
 #[derive(Component)] struct GameOverScreen;
+#[derive(Component)] struct ShadowStone;
+#[derive(Component)] struct LibertyDot;
+
+#[derive(Resource)]
+struct HoverState {
+    shadow_entity: Entity,
+    shadow_material: Handle<ColorMaterial>,
+    liberty_entities: Vec<Entity>,
+}
 
 pub struct GoPlugin;
 
 impl Plugin for GoPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup_camera, spawn_board_visuals, setup_ui, setup_hints_ui))
-           .add_systems(Update, (handle_mouse_input, handle_keyboard_input, update_scoreboard, on_game_over));
+        app.add_systems(Startup, (setup_camera, spawn_board_visuals, setup_ui, setup_hints_ui, setup_hover_visuals))
+           .add_systems(Update, (handle_mouse_input, handle_keyboard_input, update_scoreboard, on_game_over, update_hover));
     }
 }
 
@@ -486,4 +495,128 @@ fn remove_group(board: &mut Board, commands: &mut Commands, start_x: usize, star
         board.grid[ry][rx] = (Stone::Empty, None);
     }
     to_remove
+}
+
+fn setup_hover_visuals(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    // Shadow stone: starts transparent, color updated each frame based on current turn
+    let shadow_material = materials.add(ColorMaterial::from(Color::srgba(0.0, 0.0, 0.0, 0.0)));
+    let shadow_entity = commands.spawn((
+        Mesh2d(meshes.add(Circle::new(CELL_SIZE * 0.45))),
+        MeshMaterial2d(shadow_material.clone()),
+        Transform::from_xyz(0.0, 0.0, 0.8),
+        Visibility::Hidden,
+        ShadowStone,
+    )).id();
+
+    // Liberty dots: small green circles, shared material, toggled individually
+    let liberty_material = materials.add(ColorMaterial::from(Color::srgba(0.15, 0.70, 0.30, 0.85)));
+    let liberty_entities = (0..4).map(|_| {
+        commands.spawn((
+            Mesh2d(meshes.add(Circle::new(CELL_SIZE * 0.13))),
+            MeshMaterial2d(liberty_material.clone()),
+            Transform::from_xyz(0.0, 0.0, 0.75),
+            Visibility::Hidden,
+            LibertyDot,
+        )).id()
+    }).collect();
+
+    commands.insert_resource(HoverState { shadow_entity, shadow_material, liberty_entities });
+}
+
+fn update_hover(
+    window: Single<&Window>,
+    camera: Single<(&Camera, &GlobalTransform)>,
+    board: Res<Board>,
+    hover_state: Res<HoverState>,
+    mut transforms: Query<&mut Transform>,
+    mut visibilities: Query<&mut Visibility>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let hide = |hover_state: &HoverState, visibilities: &mut Query<&mut Visibility>| {
+        if let Ok(mut v) = visibilities.get_mut(hover_state.shadow_entity) { *v = Visibility::Hidden; }
+        for &e in &hover_state.liberty_entities {
+            if let Ok(mut v) = visibilities.get_mut(e) { *v = Visibility::Hidden; }
+        }
+    };
+
+    if board.game_over {
+        hide(&hover_state, &mut visibilities);
+        return;
+    }
+
+    let Some(screen_pos) = window.cursor_position() else {
+        hide(&hover_state, &mut visibilities);
+        return;
+    };
+
+    let (cam, cam_transform) = *camera;
+    let Ok(world_pos) = cam.viewport_to_world_2d(cam_transform, screen_pos) else {
+        hide(&hover_state, &mut visibilities);
+        return;
+    };
+
+    let offset = (board.size as f32 - 1.0) * CELL_SIZE / 2.0;
+    let x_index = ((world_pos.x + offset) / CELL_SIZE).round();
+    let y_index = ((world_pos.y + offset) / CELL_SIZE).round();
+    let snap_pos = Vec2::new(x_index * CELL_SIZE - offset, y_index * CELL_SIZE - offset);
+
+    let size = board.size as i32;
+    let x = x_index as i32;
+    let y = y_index as i32;
+
+    let valid = x >= 0 && x < size && y >= 0 && y < size
+        && world_pos.distance(snap_pos) <= CELL_SIZE * 0.4;
+
+    if !valid {
+        hide(&hover_state, &mut visibilities);
+        return;
+    }
+
+    let (r_x, r_y) = (x as usize, y as usize);
+    let cell_empty = board.grid[r_y][r_x].0 == Stone::Empty;
+    let ko_blocked = board.ko_forbidden == Some((r_x, r_y));
+
+    if !cell_empty || ko_blocked {
+        hide(&hover_state, &mut visibilities);
+        return;
+    }
+
+    // Show shadow stone in the current player's color (semi-transparent)
+    let shadow_color = if board.turn == Stone::Black {
+        Color::srgba(0.05, 0.05, 0.05, 0.42)
+    } else {
+        Color::srgba(0.94, 0.94, 0.94, 0.55)
+    };
+    if let Some(mat) = materials.get_mut(&hover_state.shadow_material) {
+        mat.color = shadow_color;
+    }
+    if let Ok(mut t) = transforms.get_mut(hover_state.shadow_entity) {
+        t.translation = snap_pos.extend(0.8);
+    }
+    if let Ok(mut v) = visibilities.get_mut(hover_state.shadow_entity) {
+        *v = Visibility::Visible;
+    }
+
+    // Show liberty dots on each empty adjacent cell
+    let dirs: [(i32, i32); 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+    for (i, (dx, dy)) in dirs.iter().enumerate() {
+        let nx = r_x as i32 + dx;
+        let ny = r_y as i32 + dy;
+        let in_bounds = nx >= 0 && nx < size && ny >= 0 && ny < size;
+        let is_liberty = in_bounds && board.grid[ny as usize][nx as usize].0 == Stone::Empty;
+
+        if let Ok(mut v) = visibilities.get_mut(hover_state.liberty_entities[i]) {
+            *v = if is_liberty { Visibility::Visible } else { Visibility::Hidden };
+        }
+        if is_liberty {
+            let dot_pos = Vec2::new(nx as f32 * CELL_SIZE - offset, ny as f32 * CELL_SIZE - offset);
+            if let Ok(mut t) = transforms.get_mut(hover_state.liberty_entities[i]) {
+                t.translation = dot_pos.extend(0.75);
+            }
+        }
+    }
 }
